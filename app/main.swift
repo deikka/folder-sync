@@ -230,6 +230,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
         }
 
+        // Permission warning
+        let needsPermissions = checkNeedsPermissions()
+        if needsPermissions {
+            let warnItem = NSMenuItem(title: "! Sin permisos de disco", action: nil, keyEquivalent: "")
+            warnItem.isEnabled = false
+            warnItem.attributedTitle = NSAttributedString(
+                string: "  Sin permisos de disco",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                    .foregroundColor: NSColor.systemOrange
+                ]
+            )
+            menu.addItem(warnItem)
+            addActionItem(menu, "Configurar permisos...", #selector(openPermissions), "p")
+            menu.addItem(.separator())
+        }
+
         // Last backup status
         if let s = loadJSON(statusPath, as: BackupStatus.self) {
             let indicator: String
@@ -245,8 +262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let diskStr = s.diskConnected ? "Conectado" : "No conectado"
             let destPath = loadJSON(configPath, as: BackupConfig.self)?.destination ?? "/Volumes/Toshiba/dev_apps/"
-            // Check if the volume root (e.g. /Volumes/Toshiba) is mounted
-            let volumePath = destPath.split(separator: "/").prefix(3).map { String($0) }.joined(separator: "/")
+            let volumePath = destPath.split(separator: "/").prefix(2).map { String($0) }.joined(separator: "/")
             let diskLive = FileManager.default.fileExists(atPath: "/\(volumePath)")
             let nowStr = diskLive ? "Conectado" : "No conectado"
             if diskStr != nowStr {
@@ -282,7 +298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addActionItem(menu, "Ejecutar backup ahora", #selector(runBackup), "b")
         }
 
-        addActionItem(menu, "Configurar horario...", #selector(openConfig), ",")
+        addActionItem(menu, "Ajustes...", #selector(openConfig), ",")
         addActionItem(menu, "Ver log", #selector(openLog), "l")
         addActionItem(menu, "Abrir carpeta backup", #selector(openBackupFolder), "o")
 
@@ -353,6 +369,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.backupProcess = nil
                 self?.stopProgressPolling()
                 self?.refreshMenu()
+            }
+        }
+    }
+
+    func checkNeedsPermissions() -> Bool {
+        guard let config = loadJSON(configPath, as: BackupConfig.self) else { return false }
+        let dest = config.destination
+
+        // Extract volume root (e.g. /Volumes/Toshiba)
+        let volumePath = "/" + dest.split(separator: "/").prefix(2).map { String($0) }.joined(separator: "/")
+        guard FileManager.default.fileExists(atPath: volumePath) else { return false }
+
+        // Test using /bin/ls via Process (same context as rsync/bash)
+        // GUI apps have implicit permissions that terminal processes don't
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ls")
+        process.arguments = [volumePath]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus != 0
+        } catch {
+            return true
+        }
+    }
+
+    @objc func openPermissions() {
+        let alert = NSAlert()
+        alert.messageText = "Permisos de disco necesarios"
+        alert.informativeText = """
+        macOS requiere "Acceso total al disco" para que \
+        rsync pueda leer y escribir en discos externos.
+
+        Al pulsar "Abrir Ajustes" se abrira el panel correcto:
+
+        1. Pulsa + y anade estas dos apps:
+           /usr/bin/rsync  (Cmd+Shift+G para escribir la ruta)
+           /bin/bash
+        2. Si usas Terminal o iTerm, anadeslo tambien
+
+        Tras anadirlos, cierra y vuelve a abrir la app.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Abrir Ajustes")
+        alert.addButton(withTitle: "Cancelar")
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+
+        if response == .alertFirstButtonReturn {
+            // Open Full Disk Access in System Settings
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                NSWorkspace.shared.open(url)
             }
         }
     }
