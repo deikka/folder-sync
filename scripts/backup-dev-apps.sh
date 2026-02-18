@@ -164,26 +164,19 @@ elif [ "$DEST_EMPTY" = true ]; then
 fi
 
 if [ "$SKIP_DRY_RUN" = true ]; then
-  # Contar archivos en origen (rapido, es local)
+  # Contar archivos en origen con find (rapido, es local)
   write_progress "counting" 0 0 0
   log "PASO 2: Contando archivos en origen..."
   COUNT_START=$(date +%s)
 
-  TOTAL_ITEMS=$(rsync -ah --dry-run --stats \
-    "${EXCLUDE_ARGS[@]}" "$SOURCE" /dev/null 2>&1 | \
-    grep "Number of regular files" | head -1 | awk -F: '{print $2}' | tr -d ', ' || echo "0")
+  TOTAL_ITEMS=$(find "$SOURCE" -type f \
+    -not -path '*/node_modules/*' \
+    -not -path '*/.git/*' \
+    -not -path '*/tmp/*' \
+    -not -path '*/.cache/*' \
+    -not -path '*/cache/*' \
+    -not -name '.DS_Store' 2>/dev/null | wc -l | tr -d ' ')
   TOTAL_ITEMS=${TOTAL_ITEMS:-0}
-
-  # Fallback: contar con find si rsync no dio resultado
-  if [ "$TOTAL_ITEMS" -eq 0 ]; then
-    TOTAL_ITEMS=$(find "$SOURCE" -type f \
-      -not -path '*/node_modules/*' \
-      -not -path '*/.git/*' \
-      -not -path '*/tmp/*' \
-      -not -path '*/.cache/*' \
-      -not -path '*/cache/*' \
-      -not -name '.DS_Store' 2>/dev/null | wc -l | tr -d ' ')
-  fi
 
   COUNT_ELAPSED=$(( $(date +%s) - COUNT_START ))
   log "PASO 2: $TOTAL_ITEMS archivos en origen (conteo en ${COUNT_ELAPSED}s)"
