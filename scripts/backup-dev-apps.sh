@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+# Modo de ejecucion: --full para copia completa sin analisis previo
+FULL_MODE=false
+if [ "${1:-}" = "--full" ]; then
+  FULL_MODE=true
+fi
+
 # Configuración
 CONFIG_FILE="$HOME/.local/share/backup-dev-apps/config.json"
 LOG="$HOME/.local/logs/backup-dev-apps.log"
@@ -85,11 +91,17 @@ cleanup_progress() {
 # PASO 1: Verificaciones previas
 # ============================================================
 
+MODO_STR="incremental"
+if [ "$FULL_MODE" = true ]; then
+  MODO_STR="copia completa (--full)"
+fi
+
 log "========================================"
 log "BACKUP INICIADO"
 log "  Origen:   $SOURCE"
 log "  Destino:  $DEST"
 log "  Volumen:  $VOLUME_NAME"
+log "  Modo:     $MODO_STR"
 log "  Excluye:  node_modules, .git, tmp, .cache, cache, .DS_Store"
 log "----------------------------------------"
 
@@ -131,64 +143,120 @@ else
 fi
 
 # ============================================================
-# PASO 2: Analisis de cambios (dry run)
+# PASO 2: Determinar modo y contar items
 # ============================================================
 
-log "PASO 2: Analizando cambios (dry run)..."
-write_progress "counting" 0 0 0
+# Detectar si el destino esta vacio (primera copia)
+DEST_EMPTY=false
+DEST_COUNT=$(find "$DEST" -maxdepth 1 -not -name '.' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$DEST_COUNT" -eq 0 ]; then
+  DEST_EMPTY=true
+fi
 
-DRY_START=$(date +%s)
+SKIP_DRY_RUN=false
 
-DRY_OUTPUT=$(rsync -ah --delete --dry-run --itemize-changes \
-  "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" 2>&1)
+if [ "$FULL_MODE" = true ]; then
+  log "PASO 2: Modo COPIA COMPLETA (--full), sin analisis previo"
+  SKIP_DRY_RUN=true
+elif [ "$DEST_EMPTY" = true ]; then
+  log "PASO 2: Destino vacio detectado, copia inicial directa"
+  SKIP_DRY_RUN=true
+fi
 
-DRY_ELAPSED=$(( $(date +%s) - DRY_START ))
+if [ "$SKIP_DRY_RUN" = true ]; then
+  # Contar archivos en origen (rapido, es local)
+  write_progress "counting" 0 0 0
+  log "PASO 2: Contando archivos en origen..."
+  COUNT_START=$(date +%s)
 
-TOTAL_ITEMS=$(echo "$DRY_OUTPUT" | grep -c '^[>*<cd]' || true)
-TOTAL_ITEMS=${TOTAL_ITEMS:-0}
+  TOTAL_ITEMS=$(rsync -ah --dry-run --stats \
+    "${EXCLUDE_ARGS[@]}" "$SOURCE" /dev/null 2>&1 | \
+    grep "Number of regular files" | head -1 | awk -F: '{print $2}' | tr -d ', ' || echo "0")
+  TOTAL_ITEMS=${TOTAL_ITEMS:-0}
 
-# Desglose de operaciones
-ITEMS_SEND=$(echo "$DRY_OUTPUT" | grep -c '^>f' || true)
-ITEMS_DELETE=$(echo "$DRY_OUTPUT" | grep -c '^\*deleting' || true)
-ITEMS_DIRS=$(echo "$DRY_OUTPUT" | grep -c '^cd' || true)
+  # Fallback: contar con find si rsync no dio resultado
+  if [ "$TOTAL_ITEMS" -eq 0 ]; then
+    TOTAL_ITEMS=$(find "$SOURCE" -type f \
+      -not -path '*/node_modules/*' \
+      -not -path '*/.git/*' \
+      -not -path '*/tmp/*' \
+      -not -path '*/.cache/*' \
+      -not -path '*/cache/*' \
+      -not -name '.DS_Store' 2>/dev/null | wc -l | tr -d ' ')
+  fi
 
-log "PASO 2: Analisis completado en ${DRY_ELAPSED}s"
-log "  Total items a procesar: $TOTAL_ITEMS"
-log "  - Archivos a enviar:    ${ITEMS_SEND:-0}"
-log "  - Archivos a eliminar:  ${ITEMS_DELETE:-0}"
-log "  - Directorios nuevos:   ${ITEMS_DIRS:-0}"
+  COUNT_ELAPSED=$(( $(date +%s) - COUNT_START ))
+  log "PASO 2: $TOTAL_ITEMS archivos en origen (conteo en ${COUNT_ELAPSED}s)"
 
-if [ "$TOTAL_ITEMS" -eq 0 ]; then
-  write_progress "done" 100 0 0
-  log "PASO 2: Sin cambios detectados"
-  log "RESULTADO: OK (sin cambios) | Tiempo total: $(elapsed)"
-  log "========================================"
-  write_status "ok" "0" "0 bytes" "true"
-  notify "Backup: sin cambios." "Glass"
-  cleanup_progress &
-  exit 0
+else
+  # Modo incremental: dry run para analizar cambios
+  log "PASO 2: Analizando cambios (dry run)..."
+  write_progress "counting" 0 0 0
+
+  DRY_START=$(date +%s)
+
+  DRY_OUTPUT=$(rsync -ah --delete --dry-run --itemize-changes \
+    "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" 2>&1)
+
+  DRY_ELAPSED=$(( $(date +%s) - DRY_START ))
+
+  TOTAL_ITEMS=$(echo "$DRY_OUTPUT" | grep -c '^[>*<cd]' || true)
+  TOTAL_ITEMS=${TOTAL_ITEMS:-0}
+
+  # Desglose de operaciones
+  ITEMS_SEND=$(echo "$DRY_OUTPUT" | grep -c '^>f' || true)
+  ITEMS_DELETE=$(echo "$DRY_OUTPUT" | grep -c '^\*deleting' || true)
+  ITEMS_DIRS=$(echo "$DRY_OUTPUT" | grep -c '^cd' || true)
+
+  log "PASO 2: Analisis completado en ${DRY_ELAPSED}s"
+  log "  Total items a procesar: $TOTAL_ITEMS"
+  log "  - Archivos a enviar:    ${ITEMS_SEND:-0}"
+  log "  - Archivos a eliminar:  ${ITEMS_DELETE:-0}"
+  log "  - Directorios nuevos:   ${ITEMS_DIRS:-0}"
+
+  if [ "$TOTAL_ITEMS" -eq 0 ]; then
+    write_progress "done" 100 0 0
+    log "PASO 2: Sin cambios detectados"
+    log "RESULTADO: OK (sin cambios) | Tiempo total: $(elapsed)"
+    log "========================================"
+    write_status "ok" "0" "0 bytes" "true"
+    notify "Backup: sin cambios." "Glass"
+    cleanup_progress &
+    exit 0
+  fi
 fi
 
 # ============================================================
 # PASO 3: Sincronizacion
 # ============================================================
 
-log "PASO 3: Iniciando sincronizacion de $TOTAL_ITEMS items..."
+if [ "$SKIP_DRY_RUN" = true ]; then
+  log "PASO 3: Copiando $TOTAL_ITEMS archivos (copia directa)..."
+else
+  log "PASO 3: Sincronizando $TOTAL_ITEMS items (incremental)..."
+fi
 write_progress "sync" 0 0 "$TOTAL_ITEMS"
 
 SYNC_START=$(date +%s)
 COUNT=0
 RSYNC_FULL_OUTPUT=""
+LOG_INTERVAL=$(( TOTAL_ITEMS / 10 + 1 ))
 
 while IFS= read -r line; do
   RSYNC_FULL_OUTPUT+="$line"$'\n'
   if [[ "$line" =~ ^[\>\*\<cd][a-zA-Z\+\.] ]]; then
     ((COUNT++)) || true
-    PCT=$((COUNT * 100 / TOTAL_ITEMS))
+    if [ "$TOTAL_ITEMS" -gt 0 ]; then
+      PCT=$((COUNT * 100 / TOTAL_ITEMS))
+      # Clamp a 100 por si el conteo no fue exacto
+      PCT=$(( PCT > 100 ? 100 : PCT ))
+    else
+      PCT=0
+    fi
     write_progress "sync" "$PCT" "$COUNT" "$TOTAL_ITEMS"
 
-    # Log cada 10% de progreso
-    if (( COUNT % (TOTAL_ITEMS / 10 + 1) == 0 )); then
+    # Log cada ~10% de progreso
+    if (( COUNT % LOG_INTERVAL == 0 )); then
       log "PASO 3: Progreso ${PCT}% ($COUNT/$TOTAL_ITEMS) | $(elapsed)"
     fi
   fi

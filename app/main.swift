@@ -296,6 +296,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(runningItem)
         } else {
             addActionItem(menu, "Ejecutar backup ahora", #selector(runBackup), "b")
+            addActionItem(menu, "Copia completa (sin analisis)", #selector(runFullBackup), "f")
         }
 
         addActionItem(menu, "Ajustes...", #selector(openConfig), ",")
@@ -350,6 +351,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Actions
 
     @objc func runBackup() {
+        startBackup(args: [scriptPath])
+    }
+
+    @objc func runFullBackup() {
+        startBackup(args: [scriptPath, "--full"])
+    }
+
+    func startBackup(args: [String]) {
         guard !isBackupRunning else { return }
         isBackupRunning = true
         refreshMenu()
@@ -358,7 +367,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [scriptPath]
+            process.arguments = args
             self?.backupProcess = process
 
             try? process.run()
