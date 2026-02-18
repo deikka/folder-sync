@@ -24,7 +24,15 @@ Usa `rsync` con `--delete` para mantener un espejo exacto del origen, `launchd` 
 ```sh
 brew tap deikka/tap
 brew install folder-sync
-open /opt/homebrew/opt/folder-sync/BackupMenu.app
+```
+
+Abrir la app (cualquiera de estas formas):
+
+```sh
+open -a BackupMenu                    # por nombre
+open ~/Applications/BackupMenu.app    # por ruta directa
+# Spotlight: Cmd+Space → "BackupMenu"
+# Launchpad: buscar "BackupMenu"
 ```
 
 ### Desde fuente
@@ -39,8 +47,7 @@ open ~/.local/share/backup-dev-apps/BackupMenu.app
 ### Arranque automatico con el sistema
 
 ```sh
-# Ajustar la ruta segun el metodo de instalacion
-osascript -e 'tell application "System Events" to make login item at end with properties {path:"/opt/homebrew/opt/folder-sync/BackupMenu.app", hidden:true}'
+osascript -e 'tell application "System Events" to make login item at end with properties {path:"'$HOME'/Applications/BackupMenu.app", hidden:true}'
 ```
 
 Al primer uso, macOS pedira permisos de acceso al volumen externo. Aceptar el dialogo.
@@ -79,11 +86,13 @@ El modo se selecciona automaticamente segun el estado del destino, o manualmente
 ### Linea de comandos
 
 ```sh
-# Backup incremental
+# Backup incremental (Homebrew)
+folder-sync-backup
+# Backup incremental (desde fuente)
 ~/.local/bin/backup-dev-apps.sh
 
 # Copia completa (sin analisis previo)
-~/.local/bin/backup-dev-apps.sh --full
+folder-sync-backup --full
 
 # Ver log
 cat ~/.local/logs/backup-dev-apps.log
