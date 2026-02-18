@@ -34,7 +34,12 @@ echo "Compilando BackupMenu..."
 cp scripts/com.alex.backup-dev-apps.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.alex.backup-dev-apps.plist 2>/dev/null || true
 
+# Crear symlink en ~/Applications (Spotlight, Launchpad, open -a)
+mkdir -p ~/Applications
+ln -sf ~/.local/share/backup-dev-apps/BackupMenu.app ~/Applications/BackupMenu.app
+
 echo ""
 echo "Instalacion completada."
-echo "  - Ejecutar app: open ~/.local/share/backup-dev-apps/BackupMenu.app"
+echo "  - Ejecutar app: open -a BackupMenu"
+echo "  - Tambien disponible en Spotlight y Launchpad"
 echo "  - Editar config: ~/.local/share/backup-dev-apps/config.json"
