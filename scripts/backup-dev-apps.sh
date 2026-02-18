@@ -5,13 +5,22 @@
 set -euo pipefail
 
 # Configuración
-SOURCE="/Users/alex/Desktop/dev_apps/"
-DEST="/Volumes/Toshiba/dev_apps/"
-VOLUME="/Volumes/Toshiba"
+CONFIG_FILE="$HOME/.local/share/backup-dev-apps/config.json"
 LOG="$HOME/.local/logs/backup-dev-apps.log"
 STATUS_FILE="$HOME/.local/share/backup-dev-apps/status.json"
 PROGRESS_FILE="$HOME/.local/share/backup-dev-apps/progress.json"
 TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+
+# Leer rutas de config.json (con fallback a valores por defecto)
+if [ -f "$CONFIG_FILE" ]; then
+  SOURCE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['source'])" 2>/dev/null)
+  DEST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['destination'])" 2>/dev/null)
+fi
+SOURCE="${SOURCE:-/Users/alex/Desktop/dev_apps/}"
+DEST="${DEST:-/Volumes/Toshiba/dev_apps/}"
+
+# Extraer volumen del destino (ej: /Volumes/Toshiba de /Volumes/Toshiba/dev_apps/)
+VOLUME=$(echo "$DEST" | cut -d'/' -f1-3)
 
 EXCLUDE_ARGS=(
   --exclude='node_modules'
@@ -64,9 +73,10 @@ cleanup_progress() {
 
 # Verificar si el disco está montado
 if [ ! -d "$VOLUME" ]; then
-  log "SKIP - Disco Toshiba no montado"
+  VOLUME_NAME=$(basename "$VOLUME")
+  log "SKIP - Disco $VOLUME_NAME no montado"
   write_status "skip" 0 "0 bytes" "false"
-  notify "Disco Toshiba no conectado. Backup omitido." "Basso"
+  notify "Disco $VOLUME_NAME no conectado. Backup omitido." "Basso"
   exit 0
 fi
 

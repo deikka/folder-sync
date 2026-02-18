@@ -127,6 +127,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Config window controls
     var hourField: NSTextField!
     var minuteField: NSTextField!
+    var sourceField: NSTextField!
+    var destField: NSTextField!
     var dayCheckboxes: [NSButton] = []
 
     let dayNames = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"]
@@ -242,7 +244,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             addInfoItem(menu, "Tamano:  \(s.totalSize)")
 
             let diskStr = s.diskConnected ? "Conectado" : "No conectado"
-            let diskLive = FileManager.default.fileExists(atPath: "/Volumes/Toshiba")
+            let destPath = loadJSON(configPath, as: BackupConfig.self)?.destination ?? "/Volumes/Toshiba/dev_apps/"
+            // Check if the volume root (e.g. /Volumes/Toshiba) is mounted
+            let volumePath = destPath.split(separator: "/").prefix(3).map { String($0) }.joined(separator: "/")
+            let diskLive = FileManager.default.fileExists(atPath: "/\(volumePath)")
             let nowStr = diskLive ? "Conectado" : "No conectado"
             if diskStr != nowStr {
                 addInfoItem(menu, "Disco (ultimo):  \(diskStr)  |  Ahora:  \(nowStr)")
@@ -388,10 +393,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             destination: "/Volumes/Toshiba/dev_apps/"
         )
 
-        let windowWidth: CGFloat = 380
-        let windowHeight: CGFloat = 240
+        let windowWidth: CGFloat = 500
+        let windowHeight: CGFloat = 340
         let padding: CGFloat = 20
         let rowHeight: CGFloat = 28
+        let labelWidth: CGFloat = 80
+        let browseWidth: CGFloat = 30
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -408,24 +415,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         var y = windowHeight - padding - rowHeight
 
+        // Source path
+        let srcLabel = NSTextField(labelWithString: "Origen:")
+        srcLabel.frame = NSRect(x: padding, y: y, width: labelWidth, height: rowHeight)
+        srcLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        contentView.addSubview(srcLabel)
+
+        let srcFieldWidth = windowWidth - padding - labelWidth - browseWidth - padding - 8
+        sourceField = NSTextField(frame: NSRect(x: padding + labelWidth, y: y, width: srcFieldWidth, height: rowHeight))
+        sourceField.stringValue = config.source
+        sourceField.font = .systemFont(ofSize: 12)
+        sourceField.lineBreakMode = .byTruncatingMiddle
+        contentView.addSubview(sourceField)
+
+        let srcBrowse = NSButton(title: "...", target: self, action: #selector(browseSource))
+        srcBrowse.frame = NSRect(x: windowWidth - padding - browseWidth, y: y, width: browseWidth, height: rowHeight)
+        srcBrowse.bezelStyle = .rounded
+        contentView.addSubview(srcBrowse)
+
+        // Destination path
+        y -= rowHeight + 8
+        let dstLabel = NSTextField(labelWithString: "Destino:")
+        dstLabel.frame = NSRect(x: padding, y: y, width: labelWidth, height: rowHeight)
+        dstLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        contentView.addSubview(dstLabel)
+
+        destField = NSTextField(frame: NSRect(x: padding + labelWidth, y: y, width: srcFieldWidth, height: rowHeight))
+        destField.stringValue = config.destination
+        destField.font = .systemFont(ofSize: 12)
+        destField.lineBreakMode = .byTruncatingMiddle
+        contentView.addSubview(destField)
+
+        let dstBrowse = NSButton(title: "...", target: self, action: #selector(browseDestination))
+        dstBrowse.frame = NSRect(x: windowWidth - padding - browseWidth, y: y, width: browseWidth, height: rowHeight)
+        dstBrowse.bezelStyle = .rounded
+        contentView.addSubview(dstBrowse)
+
         // Time section
-        let timeLabel = NSTextField(labelWithString: "Hora de ejecucion:")
-        timeLabel.frame = NSRect(x: padding, y: y, width: 160, height: rowHeight)
+        y -= rowHeight + 16
+        let timeLabel = NSTextField(labelWithString: "Hora:")
+        timeLabel.frame = NSRect(x: padding, y: y, width: labelWidth, height: rowHeight)
         timeLabel.font = .systemFont(ofSize: 13, weight: .medium)
         contentView.addSubview(timeLabel)
 
-        hourField = NSTextField(frame: NSRect(x: 180, y: y, width: 45, height: rowHeight))
+        hourField = NSTextField(frame: NSRect(x: padding + labelWidth, y: y, width: 45, height: rowHeight))
         hourField.integerValue = config.hour
         hourField.alignment = .center
         hourField.formatter = createNumberFormatter(min: 0, max: 23)
         contentView.addSubview(hourField)
 
         let colon = NSTextField(labelWithString: ":")
-        colon.frame = NSRect(x: 228, y: y, width: 10, height: rowHeight)
+        colon.frame = NSRect(x: padding + labelWidth + 48, y: y, width: 10, height: rowHeight)
         colon.font = .boldSystemFont(ofSize: 14)
         contentView.addSubview(colon)
 
-        minuteField = NSTextField(frame: NSRect(x: 240, y: y, width: 45, height: rowHeight))
+        minuteField = NSTextField(frame: NSRect(x: padding + labelWidth + 60, y: y, width: 45, height: rowHeight))
         minuteField.integerValue = config.minute
         minuteField.alignment = .center
         minuteField.formatter = createNumberFormatter(min: 0, max: 59)
@@ -433,10 +477,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Days section
         y -= rowHeight + 12
-        let daysLabel = NSTextField(labelWithString: "Dias (vacio = cada dia):")
-        daysLabel.frame = NSRect(x: padding, y: y, width: 200, height: rowHeight)
+        let daysLabel = NSTextField(labelWithString: "Dias:")
+        daysLabel.frame = NSRect(x: padding, y: y, width: labelWidth, height: rowHeight)
         daysLabel.font = .systemFont(ofSize: 13, weight: .medium)
         contentView.addSubview(daysLabel)
+
+        let daysHint = NSTextField(labelWithString: "(vacio = cada dia)")
+        daysHint.frame = NSRect(x: padding + labelWidth, y: y, width: 200, height: rowHeight)
+        daysHint.font = .systemFont(ofSize: 11)
+        daysHint.textColor = .secondaryLabelColor
+        contentView.addSubview(daysHint)
 
         y -= rowHeight + 4
         dayCheckboxes = []
@@ -446,7 +496,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for i in 0..<4 {
             let dayIndex = i + 1
             let cb = NSButton(checkboxWithTitle: dayNames[dayIndex], target: nil, action: nil)
-            cb.frame = NSRect(x: padding + CGFloat(i) * (checkWidth + 16), y: y, width: checkWidth + 12, height: rowHeight)
+            cb.frame = NSRect(x: padding + labelWidth + CGFloat(i) * (checkWidth + 16), y: y, width: checkWidth + 12, height: rowHeight)
             cb.tag = dayIndex
             cb.state = config.days.contains(dayIndex) ? .on : .off
             contentView.addSubview(cb)
@@ -458,7 +508,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let row2Days = [5, 6, 0]
         for (i, dayIndex) in row2Days.enumerated() {
             let cb = NSButton(checkboxWithTitle: dayNames[dayIndex], target: nil, action: nil)
-            cb.frame = NSRect(x: padding + CGFloat(i) * (checkWidth + 16), y: y, width: checkWidth + 12, height: rowHeight)
+            cb.frame = NSRect(x: padding + labelWidth + CGFloat(i) * (checkWidth + 16), y: y, width: checkWidth + 12, height: rowHeight)
             cb.tag = dayIndex
             cb.state = config.days.contains(dayIndex) ? .on : .off
             contentView.addSubview(cb)
@@ -485,6 +535,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc func browseSource() {
+        if let path = browseFolder(title: "Seleccionar carpeta de origen", current: sourceField.stringValue) {
+            sourceField.stringValue = path
+        }
+    }
+
+    @objc func browseDestination() {
+        if let path = browseFolder(title: "Seleccionar carpeta de destino", current: destField.stringValue) {
+            destField.stringValue = path
+        }
+    }
+
+    func browseFolder(title: String, current: String) -> String? {
+        let panel = NSOpenPanel()
+        panel.title = title
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        if FileManager.default.fileExists(atPath: current) {
+            panel.directoryURL = URL(fileURLWithPath: current)
+        }
+        return panel.runModal() == .OK ? panel.url?.path.appending("/") : nil
+    }
+
     @objc func saveConfig() {
         var config = loadJSON(configPath, as: BackupConfig.self) ?? BackupConfig(
             hour: 10, minute: 0, days: [],
@@ -495,6 +570,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         config.hour = hourField.integerValue
         config.minute = minuteField.integerValue
         config.days = dayCheckboxes.filter { $0.state == .on }.map { $0.tag }
+        config.source = sourceField.stringValue
+        config.destination = destField.stringValue
 
         saveJSON(config, to: configPath)
         regeneratePlist(config: config)
