@@ -1,0 +1,10 @@
+# Built app bundle
+BackupMenu.app/
+
+# Runtime state
+status.json
+progress.json
+config.json
+
+# macOS
+.DS_Store
