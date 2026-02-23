@@ -200,9 +200,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         // Header
-        let header = NSMenuItem(title: "Backup dev_apps", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "Backup dev", action: nil, keyEquivalent: "")
         header.attributedTitle = NSAttributedString(
-            string: "Backup dev_apps",
+            string: "Backup dev",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]
         )
         menu.addItem(header)
@@ -469,8 +469,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let config = loadJSON(configPath, as: BackupConfig.self) ?? BackupConfig(
             hour: 10, minute: 0, days: [],
-            source: "\(home)/Desktop/dev_apps/",
-            destination: "/Volumes/Toshiba/dev_apps/"
+            source: "\(home)/dev/",
+            destination: "/Volumes/Toshiba/dev/"
         )
 
         let windowWidth: CGFloat = 500

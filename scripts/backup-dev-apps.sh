@@ -22,8 +22,8 @@ if [ -f "$CONFIG_FILE" ]; then
   SOURCE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['source'])" 2>/dev/null)
   DEST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['destination'])" 2>/dev/null)
 fi
-SOURCE="${SOURCE:-/Users/alex/Desktop/dev_apps/}"
-DEST="${DEST:-/Volumes/Toshiba/dev_apps/}"
+SOURCE="${SOURCE:-/Users/alex/dev/}"
+DEST="${DEST:-/Volumes/Toshiba/dev/}"
 
 # Extraer volumen del destino (ej: /Volumes/Toshiba de /Volumes/Toshiba/dev_apps/)
 VOLUME=$(echo "$DEST" | cut -d'/' -f1-3)
