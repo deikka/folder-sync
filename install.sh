@@ -42,9 +42,10 @@ fi
 cp scripts/com.klab.folder-sync.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist 2>/dev/null || true
 
-# Crear symlink en ~/Applications (Spotlight, Launchpad, open -a)
+# Copiar a ~/Applications (Spotlight/Raycast/Launchpad no indexan symlinks)
 mkdir -p ~/Applications
-ln -sf ~/.local/share/backup-dev-apps/BackupMenu.app ~/Applications/BackupMenu.app
+rm -rf ~/Applications/BackupMenu.app
+cp -R ~/.local/share/backup-dev-apps/BackupMenu.app ~/Applications/BackupMenu.app
 
 echo ""
 echo "Instalacion completada."

@@ -8,11 +8,16 @@ APP_DIR="$DIR/$APP_NAME.app"
 echo "Compilando $APP_NAME..."
 swiftc -O -o "$DIR/$APP_NAME" "$DIR/app/main.swift" -framework Cocoa
 
+echo "Generando icono..."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+"$SCRIPT_DIR/scripts/generate-icon.sh" "$DIR"
+
 echo "Creando bundle .app..."
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 mv "$DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
+mv "$DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -28,6 +33,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
     <string>1.0</string>
     <key>CFBundleExecutable</key>
     <string>BackupMenu</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
