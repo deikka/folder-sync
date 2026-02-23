@@ -232,33 +232,39 @@ write_progress "sync" 0 0 "$TOTAL_ITEMS"
 
 SYNC_START=$(date +%s)
 COUNT=0
-RSYNC_FULL_OUTPUT=""
 LOG_INTERVAL=$(( TOTAL_ITEMS / 10 + 1 ))
+RSYNC_LOG=$(mktemp /tmp/backup-rsync.XXXXXX)
 
-while IFS= read -r line; do
-  RSYNC_FULL_OUTPUT+="$line"$'\n'
-  if [[ "$line" =~ ^[\>\*\<cd][a-zA-Z\+\.] ]]; then
-    ((COUNT++)) || true
+rsync -ah --delete --itemize-changes --stats \
+  "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$RSYNC_LOG" 2>&1 &
+RSYNC_PID=$!
+
+# Monitor progress by tailing rsync output
+while kill -0 "$RSYNC_PID" 2>/dev/null; do
+  NEW_COUNT=$(grep -c '^[>*<cd][a-zA-Z+.]' "$RSYNC_LOG" 2>/dev/null || true)
+  if [ "$NEW_COUNT" -gt "$COUNT" ]; then
+    COUNT=$NEW_COUNT
     if [ "$TOTAL_ITEMS" -gt 0 ]; then
       PCT=$((COUNT * 100 / TOTAL_ITEMS))
-      # Clamp a 100 por si el conteo no fue exacto
       PCT=$(( PCT > 100 ? 100 : PCT ))
     else
       PCT=0
     fi
     write_progress "sync" "$PCT" "$COUNT" "$TOTAL_ITEMS"
 
-    # Log cada ~10% de progreso
     if (( COUNT % LOG_INTERVAL == 0 )); then
       log "PASO 3: Progreso ${PCT}% ($COUNT/$TOTAL_ITEMS) | $(elapsed)"
     fi
   fi
-done < <(rsync -ah --delete --itemize-changes --stats \
-  "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" 2>&1)
+  sleep 2
+done
 
+wait "$RSYNC_PID"
 RSYNC_EXIT=$?
 SYNC_ELAPSED=$(( $(date +%s) - SYNC_START ))
 
+# Final count
+COUNT=$(grep -c '^[>*<cd][a-zA-Z+.]' "$RSYNC_LOG" 2>/dev/null || true)
 write_progress "done" 100 "$COUNT" "$TOTAL_ITEMS"
 
 # ============================================================
@@ -266,16 +272,16 @@ write_progress "done" 100 "$COUNT" "$TOTAL_ITEMS"
 # ============================================================
 
 # Extraer resumen de stats de rsync
-FILES_TRANSFERRED=$(echo "$RSYNC_FULL_OUTPUT" | grep "Number of regular files transferred" | awk '{print $NF}')
-TOTAL_SIZE=$(echo "$RSYNC_FULL_OUTPUT" | grep "Total transferred file size" | awk -F: '{print $2}' | xargs)
-TOTAL_FILES=$(echo "$RSYNC_FULL_OUTPUT" | grep "Number of files:" | head -1 | awk -F: '{print $2}' | xargs)
-SPEEDUP=$(echo "$RSYNC_FULL_OUTPUT" | grep "speedup is" | awk '{print $NF}')
+FILES_TRANSFERRED=$(grep "Number of regular files transferred" "$RSYNC_LOG" | awk '{print $NF}')
+TOTAL_SIZE=$(grep "Total transferred file size" "$RSYNC_LOG" | awk -F: '{print $2}' | xargs)
+TOTAL_FILES=$(grep "Number of files:" "$RSYNC_LOG" | head -1 | awk -F: '{print $2}' | xargs)
+SPEEDUP=$(grep "speedup is" "$RSYNC_LOG" | awk '{print $NF}')
 
 if [ "$RSYNC_EXIT" -ne 0 ]; then
   log "PASO 4: rsync fallo con codigo $RSYNC_EXIT"
 
   # Intentar capturar lineas de error
-  ERRORS=$(echo "$RSYNC_FULL_OUTPUT" | grep -i "error\|failed\|denied\|permission" | head -5)
+  ERRORS=$(grep -i "error\|failed\|denied\|permission" "$RSYNC_LOG" | head -5)
   if [ -n "$ERRORS" ]; then
     log "  Errores detectados:"
     while IFS= read -r err; do
@@ -287,6 +293,7 @@ if [ "$RSYNC_EXIT" -ne 0 ]; then
   log "========================================"
   write_status "error" 0 "0 bytes" "true"
   notify "Error en backup. Revisa el log." "Basso"
+  rm -f "$RSYNC_LOG"
   cleanup_progress &
   exit 1
 fi
@@ -303,4 +310,5 @@ log "========================================"
 write_status "ok" "${FILES_TRANSFERRED:-0}" "${TOTAL_SIZE:-0 bytes}" "true"
 notify "Backup completado. ${FILES_TRANSFERRED:-0} archivos en $(elapsed)." "Glass"
 
+rm -f "$RSYNC_LOG"
 cleanup_progress &
