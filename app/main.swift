@@ -1,4 +1,5 @@
 import Cocoa
+import ServiceManagement
 
 // MARK: - Paths
 
@@ -200,9 +201,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         // Header
-        let header = NSMenuItem(title: "Backup dev", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "Folder Sync", action: nil, keyEquivalent: "")
         header.attributedTitle = NSAttributedString(
-            string: "Backup dev",
+            string: "Folder Sync",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]
         )
         menu.addItem(header)
@@ -458,6 +459,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    // MARK: - Launch at Login
+
+    func isLaunchAtLoginEnabled() -> Bool {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return false
+    }
+
+    @objc func toggleLaunchAtLogin() {
+        if #available(macOS 13.0, *) {
+            do {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                } else {
+                    try SMAppService.mainApp.register()
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Error"
+                alert.informativeText = "No se pudo cambiar el inicio automatico: \(error.localizedDescription)"
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+            refreshMenu()
+        }
+    }
+
     // MARK: - Config Window
 
     @objc func openConfig() {
@@ -474,7 +503,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 340
+        let windowHeight: CGFloat = 400
         let padding: CGFloat = 20
         let rowHeight: CGFloat = 28
         let labelWidth: CGFloat = 80
@@ -609,6 +638,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cancelBtn.bezelStyle = .rounded
         cancelBtn.keyEquivalent = "\u{1b}"
         contentView.addSubview(cancelBtn)
+
+        // Launch at login checkbox
+        let launchCheckbox = NSButton(checkboxWithTitle: "Iniciar con el sistema", target: self, action: #selector(toggleLaunchAtLogin))
+        launchCheckbox.frame = NSRect(x: padding, y: y + 2, width: 200, height: rowHeight)
+        launchCheckbox.state = isLaunchAtLoginEnabled() ? .on : .off
+        contentView.addSubview(launchCheckbox)
+
+        // Version label
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+        let versionLabel = NSTextField(labelWithString: "Folder Sync v\(version)")
+        versionLabel.frame = NSRect(x: padding, y: 10, width: windowWidth - padding * 2, height: 16)
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.textColor = .tertiaryLabelColor
+        contentView.addSubview(versionLabel)
 
         configWindow = window
         window.makeKeyAndOrderFront(nil)

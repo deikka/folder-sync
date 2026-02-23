@@ -16,7 +16,7 @@ Folder Sync - macOS incremental backup system with native menu bar app. Mirrors 
 make build
 
 # Launch
-open BackupMenu.app
+open FolderSync.app
 
 # Full install (script + launchd + app)
 ./install.sh

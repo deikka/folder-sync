@@ -29,10 +29,10 @@ brew install folder-sync
 Abrir la app (cualquiera de estas formas):
 
 ```sh
-open -a BackupMenu                    # por nombre
-open ~/Applications/BackupMenu.app    # por ruta directa
-# Spotlight: Cmd+Space → "BackupMenu"
-# Launchpad: buscar "BackupMenu"
+open -a FolderSync                      # por nombre
+open ~/Applications/FolderSync.app      # por ruta directa
+# Spotlight/Raycast: buscar "Folder Sync"
+# Launchpad: buscar "Folder Sync"
 ```
 
 ### Desde fuente
@@ -41,13 +41,13 @@ open ~/Applications/BackupMenu.app    # por ruta directa
 git clone git@github.com:deikka/folder-sync.git
 cd folder-sync
 ./install.sh
-open ~/.local/share/backup-dev-apps/BackupMenu.app
+open ~/.local/share/backup-dev-apps/FolderSync.app
 ```
 
 ### Arranque automatico con el sistema
 
 ```sh
-osascript -e 'tell application "System Events" to make login item at end with properties {path:"'$HOME'/Applications/BackupMenu.app", hidden:true}'
+osascript -e 'tell application "System Events" to make login item at end with properties {path:"'$HOME'/Applications/FolderSync.app", hidden:true}'
 ```
 
 Al primer uso, macOS pedira permisos de acceso al volumen externo. Aceptar el dialogo.

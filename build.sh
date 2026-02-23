@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DIR="$HOME/.local/share/backup-dev-apps"
-APP_NAME="BackupMenu"
+APP_NAME="FolderSync"
 APP_DIR="$DIR/$APP_NAME.app"
 
 echo "Compilando $APP_NAME..."
@@ -26,13 +26,13 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>BackupMenu</string>
+    <string>Folder Sync</string>
     <key>CFBundleIdentifier</key>
     <string>com.klab.folder-sync</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.4.0</string>
     <key>CFBundleExecutable</key>
-    <string>BackupMenu</string>
+    <string>FolderSync</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSUIElement</key>

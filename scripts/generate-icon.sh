@@ -36,24 +36,24 @@ for (name, size) in sizes {
     let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
 
     let gradient = NSGradient(
-        starting: NSColor(calibratedRed: 0.18, green: 0.55, blue: 0.82, alpha: 1.0),
-        ending: NSColor(calibratedRed: 0.12, green: 0.38, blue: 0.65, alpha: 1.0)
+        starting: NSColor(calibratedRed: 0.18, green: 0.20, blue: 0.25, alpha: 1.0),
+        ending: NSColor(calibratedRed: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
     )!
     gradient.draw(in: path, angle: -90)
 
-    // SF Symbol
+    // SF Symbol in white
     if let symbol = NSImage(systemSymbolName: "externaldrive.badge.timemachine",
                             accessibilityDescription: nil) {
         let config = NSImage.SymbolConfiguration(pointSize: s * 0.45, weight: .medium)
+            .applying(.init(paletteColors: [.white]))
         let configured = symbol.withSymbolConfiguration(config)!
 
         let symbolSize = configured.size
         let x = (s - symbolSize.width) / 2
         let y = (s - symbolSize.height) / 2
 
-        NSColor.white.setFill()
         configured.draw(in: NSRect(x: x, y: y, width: symbolSize.width, height: symbolSize.height),
-                       from: .zero, operation: .sourceAtop, fraction: 1.0)
+                       from: .zero, operation: .sourceOver, fraction: 1.0)
     }
 
     img.unlockFocus()

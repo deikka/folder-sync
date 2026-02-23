@@ -27,7 +27,7 @@ EOF
 fi
 
 # Compilar app
-echo "Compilando BackupMenu..."
+echo "Compilando FolderSync..."
 ./build.sh
 
 # Migrar LaunchAgent antiguo si existe
@@ -44,11 +44,11 @@ launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist 2>/dev/null || 
 
 # Copiar a ~/Applications (Spotlight/Raycast/Launchpad no indexan symlinks)
 mkdir -p ~/Applications
-rm -rf ~/Applications/BackupMenu.app
-cp -R ~/.local/share/backup-dev-apps/BackupMenu.app ~/Applications/BackupMenu.app
+rm -rf ~/Applications/FolderSync.app
+cp -R ~/.local/share/backup-dev-apps/FolderSync.app ~/Applications/FolderSync.app
 
 echo ""
 echo "Instalacion completada."
-echo "  - Ejecutar app: open -a BackupMenu"
+echo "  - Ejecutar app: open -a FolderSync"
 echo "  - Tambien disponible en Spotlight y Launchpad"
 echo "  - Editar config: ~/.local/share/backup-dev-apps/config.json"

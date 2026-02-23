@@ -1,9 +1,9 @@
 #!/bin/bash
-# Copia BackupMenu.app a ~/Applications para que Spotlight/Raycast lo indexen
+# Copia FolderSync.app a ~/Applications para que Spotlight/Raycast lo indexen
 # (los symlinks no son indexados)
 set -euo pipefail
 
-SOURCE="${1:-/opt/homebrew/opt/folder-sync/BackupMenu.app}"
+SOURCE="${1:-/opt/homebrew/opt/folder-sync/FolderSync.app}"
 
 if [ ! -d "$SOURCE" ]; then
   echo "Error: no se encontro $SOURCE"
@@ -12,8 +12,8 @@ if [ ! -d "$SOURCE" ]; then
 fi
 
 mkdir -p ~/Applications
-rm -rf ~/Applications/BackupMenu.app
-cp -R "$SOURCE" ~/Applications/BackupMenu.app
+rm -rf ~/Applications/FolderSync.app
+cp -R "$SOURCE" ~/Applications/FolderSync.app
 
-echo "BackupMenu.app copiado a ~/Applications/"
+echo "FolderSync.app copiado a ~/Applications/"
 echo "Ya deberia aparecer en Spotlight y Raycast."
