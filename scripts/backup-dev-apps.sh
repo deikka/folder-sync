@@ -29,7 +29,7 @@ if [ -f "$CONFIG_FILE" ]; then
   SOURCE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['source'])" 2>/dev/null) || true
   DEST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['destination'])" 2>/dev/null) || true
 fi
-SOURCE="${SOURCE:-/Users/alex/dev/}"
+SOURCE="${SOURCE:-$HOME/dev/}"
 DEST="${DEST:-/Volumes/Toshiba/dev/}"
 
 # Nombre del directorio fuente para notificaciones

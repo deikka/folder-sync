@@ -39,7 +39,7 @@ Three-layer system communicating via JSON files:
 
 **Bash Script (scripts/backup-dev-apps.sh)** → Execution layer. Reads paths from `config.json`, runs rsync with `--delete --itemize-changes`, writes `progress.json` per-item and `status.json` on completion. Auto-detects empty destination to skip dry-run.
 
-**LaunchAgent (scripts/com.alex.backup-dev-apps.plist)** → Scheduling layer. Generated dynamically by the Swift app via `regeneratePlist()` which does unload → write → load cycle.
+**LaunchAgent (scripts/com.klab.folder-sync.plist)** → Scheduling layer. Generated dynamically by the Swift app via `regeneratePlist()` which does unload → write → load cycle.
 
 ### Data flow during backup
 ```

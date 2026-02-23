@@ -9,7 +9,7 @@ let statusPath = "\(dataDir)/status.json"
 let progressPath = "\(dataDir)/progress.json"
 let logPath = "\(home)/.local/logs/backup-dev-apps.log"
 let scriptPath = "\(home)/.local/bin/backup-dev-apps.sh"
-let plistPath = "\(home)/Library/LaunchAgents/com.alex.backup-dev-apps.plist"
+let plistPath = "\(home)/Library/LaunchAgents/com.klab.folder-sync.plist"
 
 // MARK: - Data Models
 
@@ -92,7 +92,7 @@ func regeneratePlist(config: BackupConfig) {
     <plist version="1.0">
     <dict>
         <key>Label</key>
-        <string>com.alex.backup-dev-apps</string>
+        <string>com.klab.folder-sync</string>
         <key>ProgramArguments</key>
         <array>
             <string>\(scriptPath)</string>

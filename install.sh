@@ -14,7 +14,7 @@ chmod +x ~/.local/bin/backup-dev-apps.sh
 
 # Crear config por defecto si no existe
 if [ ! -f ~/.local/share/backup-dev-apps/config.json ]; then
-  cat > ~/.local/share/backup-dev-apps/config.json <<'EOF'
+  cat > ~/.local/share/backup-dev-apps/config.json <<EOF
 {
   "hour": 10,
   "minute": 0,
@@ -30,9 +30,17 @@ fi
 echo "Compilando BackupMenu..."
 ./build.sh
 
+# Migrar LaunchAgent antiguo si existe
+OLD_PLIST="$HOME/Library/LaunchAgents/com.alex.backup-dev-apps.plist"
+if [ -f "$OLD_PLIST" ]; then
+  echo "Migrando LaunchAgent antiguo..."
+  launchctl unload "$OLD_PLIST" 2>/dev/null || true
+  rm -f "$OLD_PLIST"
+fi
+
 # Instalar LaunchAgent
-cp scripts/com.alex.backup-dev-apps.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.alex.backup-dev-apps.plist 2>/dev/null || true
+cp scripts/com.klab.folder-sync.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist 2>/dev/null || true
 
 # Crear symlink en ~/Applications (Spotlight, Launchpad, open -a)
 mkdir -p ~/Applications

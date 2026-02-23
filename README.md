@@ -98,10 +98,10 @@ folder-sync-backup --full
 cat ~/.local/logs/backup-dev-apps.log
 
 # Desactivar programacion
-launchctl unload ~/Library/LaunchAgents/com.alex.backup-dev-apps.plist
+launchctl unload ~/Library/LaunchAgents/com.klab.folder-sync.plist
 
 # Reactivar programacion
-launchctl load ~/Library/LaunchAgents/com.alex.backup-dev-apps.plist
+launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist
 ```
 
 ## Configuracion
@@ -113,7 +113,7 @@ La app guarda la configuracion en `~/.local/share/backup-dev-apps/config.json`:
   "hour": 10,
   "minute": 0,
   "days": [1, 2, 3, 4, 5],
-  "source": "/Users/alex/Desktop/dev_apps/",
+  "source": "~/Desktop/dev_apps/",
   "destination": "/Volumes/Toshiba/dev_apps/"
 }
 ```
@@ -131,7 +131,7 @@ Cada ejecucion registra 4 pasos detallados:
 ```
 [2026-02-18 10:45:00] ========================================
 [2026-02-18 10:45:00] BACKUP INICIADO
-[2026-02-18 10:45:00]   Origen:   /Users/alex/Desktop/dev_apps/
+[2026-02-18 10:45:00]   Origen:   ~/Desktop/dev_apps/
 [2026-02-18 10:45:00]   Destino:  /Volumes/Toshiba/dev_apps/
 [2026-02-18 10:45:00]   Volumen:  Toshiba
 [2026-02-18 10:45:00]   Modo:     incremental
@@ -171,7 +171,7 @@ Modificar la variable `EXCLUDE_ARGS` en `scripts/backup-dev-apps.sh` para ajusta
 │   └── main.swift              # App de menu (Swift/AppKit)
 ├── scripts/
 │   ├── backup-dev-apps.sh      # Script rsync con progreso
-│   └── com.alex.backup-dev-apps.plist  # LaunchAgent template
+│   └── com.klab.folder-sync.plist      # LaunchAgent template
 ├── build.sh                    # Compila el bundle .app
 └── install.sh                  # Instalacion completa
 ```
