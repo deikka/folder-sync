@@ -2,7 +2,7 @@
 # Backup incremental de dev_apps a disco externo
 # Ejecutado diariamente via launchd
 
-set -euo pipefail
+set -u
 
 # Modo de ejecucion: --full para copia completa sin analisis previo
 FULL_MODE=false
@@ -17,13 +17,23 @@ STATUS_FILE="$HOME/.local/share/backup-dev-apps/status.json"
 PROGRESS_FILE="$HOME/.local/share/backup-dev-apps/progress.json"
 START_TIME=$(date +%s)
 
+# Archivos temporales (se limpian en trap)
+RSYNC_LOG=""
+DRY_LOG=""
+
+# Flag para distinguir salida normal de interrupcion
+SCRIPT_FINISHED=false
+
 # Leer rutas de config.json (con fallback a valores por defecto)
 if [ -f "$CONFIG_FILE" ]; then
-  SOURCE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['source'])" 2>/dev/null)
-  DEST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['destination'])" 2>/dev/null)
+  SOURCE=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['source'])" 2>/dev/null) || true
+  DEST=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['destination'])" 2>/dev/null) || true
 fi
 SOURCE="${SOURCE:-/Users/alex/dev/}"
 DEST="${DEST:-/Volumes/Toshiba/dev/}"
+
+# Nombre del directorio fuente para notificaciones
+SOURCE_NAME=$(basename "${SOURCE%/}")
 
 # Extraer volumen del destino (ej: /Volumes/Toshiba de /Volumes/Toshiba/dev_apps/)
 VOLUME=$(echo "$DEST" | cut -d'/' -f1-3)
@@ -52,7 +62,7 @@ elapsed() {
 }
 
 notify() {
-  osascript -e "display notification \"$1\" with title \"Backup dev_apps\" sound name \"$2\""
+  osascript -e "display notification \"$1\" with title \"Backup $SOURCE_NAME\" sound name \"$2\""
 }
 
 write_status() {
@@ -88,6 +98,34 @@ cleanup_progress() {
 }
 
 # ============================================================
+# TRAP EXIT: limpieza garantizada
+# ============================================================
+cleanup_on_exit() {
+  # Limpiar archivos temporales siempre
+  rm -f "$RSYNC_LOG" "$DRY_LOG" 2>/dev/null
+
+  # Si el script no termino normalmente, registrar error
+  if [ "$SCRIPT_FINISHED" != "true" ]; then
+    log "RESULTADO: ERROR (interrupcion inesperada) | Tiempo total: $(elapsed)"
+    log "========================================"
+    write_status "error" 0 "0 bytes" "true"
+    rm -f "$PROGRESS_FILE" 2>/dev/null
+  fi
+}
+trap cleanup_on_exit EXIT
+
+# ============================================================
+# Rotacion de log (max ~5MB, guarda 1 historico)
+# ============================================================
+mkdir -p "$(dirname "$LOG")"
+if [ -f "$LOG" ]; then
+  LOG_SIZE=$(stat -f%z "$LOG" 2>/dev/null || echo "0")
+  if [ "$LOG_SIZE" -gt 5242880 ]; then
+    mv "$LOG" "${LOG}.1"
+  fi
+fi
+
+# ============================================================
 # PASO 1: Verificaciones previas
 # ============================================================
 
@@ -112,6 +150,7 @@ if [ ! -d "$VOLUME" ]; then
   log "========================================"
   write_status "skip" 0 "0 bytes" "false"
   notify "Disco $VOLUME_NAME no conectado. Backup omitido." "Basso"
+  SCRIPT_FINISHED=true
   exit 0
 fi
 log "PASO 1: Disco $VOLUME_NAME montado OK"
@@ -123,6 +162,7 @@ if [ ! -d "$SOURCE" ]; then
   log "========================================"
   write_status "error" 0 "0 bytes" "true"
   notify "Error: carpeta origen no existe." "Basso"
+  SCRIPT_FINISHED=true
   exit 1
 fi
 
@@ -135,6 +175,7 @@ if [ ! -d "$DEST" ]; then
     log "========================================"
     write_status "error" 0 "0 bytes" "true"
     notify "Error: sin permisos para escribir en destino." "Basso"
+    SCRIPT_FINISHED=true
     exit 1
   }
   log "PASO 1: Carpeta destino creada"
@@ -182,24 +223,28 @@ if [ "$SKIP_DRY_RUN" = true ]; then
   log "PASO 2: $TOTAL_ITEMS archivos en origen (conteo en ${COUNT_ELAPSED}s)"
 
 else
-  # Modo incremental: dry run para analizar cambios
+  # Modo incremental: dry run a archivo temporal
   log "PASO 2: Analizando cambios (dry run)..."
   write_progress "counting" 0 0 0
 
   DRY_START=$(date +%s)
+  DRY_LOG=$(mktemp /tmp/backup-dry.XXXXXX)
 
-  DRY_OUTPUT=$(rsync -ah --delete --dry-run --itemize-changes \
-    "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" 2>&1)
+  rsync -ah --delete --dry-run --itemize-changes \
+    "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$DRY_LOG" 2>&1 || true
 
   DRY_ELAPSED=$(( $(date +%s) - DRY_START ))
 
-  TOTAL_ITEMS=$(echo "$DRY_OUTPUT" | grep -c '^[>*<cd]' || true)
+  TOTAL_ITEMS=$(grep -c '^[>*<cd]' "$DRY_LOG" || true)
   TOTAL_ITEMS=${TOTAL_ITEMS:-0}
 
   # Desglose de operaciones
-  ITEMS_SEND=$(echo "$DRY_OUTPUT" | grep -c '^>f' || true)
-  ITEMS_DELETE=$(echo "$DRY_OUTPUT" | grep -c '^\*deleting' || true)
-  ITEMS_DIRS=$(echo "$DRY_OUTPUT" | grep -c '^cd' || true)
+  ITEMS_SEND=$(grep -c '^>f' "$DRY_LOG" || true)
+  ITEMS_DELETE=$(grep -c '^\*deleting' "$DRY_LOG" || true)
+  ITEMS_DIRS=$(grep -c '^cd' "$DRY_LOG" || true)
+
+  rm -f "$DRY_LOG"
+  DRY_LOG=""
 
   log "PASO 2: Analisis completado en ${DRY_ELAPSED}s"
   log "  Total items a procesar: $TOTAL_ITEMS"
@@ -215,6 +260,7 @@ else
     write_status "ok" "0" "0 bytes" "true"
     notify "Backup: sin cambios." "Glass"
     cleanup_progress &
+    SCRIPT_FINISHED=true
     exit 0
   fi
 fi
@@ -239,21 +285,27 @@ rsync -ah --delete --itemize-changes --stats \
   "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$RSYNC_LOG" 2>&1 &
 RSYNC_PID=$!
 
-# Monitor progress by tailing rsync output
+# Monitoreo de progreso con offset de bytes (evita re-escanear O(n^2))
+BYTE_OFFSET=1
 while kill -0 "$RSYNC_PID" 2>/dev/null; do
-  NEW_COUNT=$(grep -c '^[>*<cd][a-zA-Z+.]' "$RSYNC_LOG" 2>/dev/null || true)
-  if [ "$NEW_COUNT" -gt "$COUNT" ]; then
-    COUNT=$NEW_COUNT
-    if [ "$TOTAL_ITEMS" -gt 0 ]; then
-      PCT=$((COUNT * 100 / TOTAL_ITEMS))
-      PCT=$(( PCT > 100 ? 100 : PCT ))
-    else
-      PCT=0
-    fi
-    write_progress "sync" "$PCT" "$COUNT" "$TOTAL_ITEMS"
+  FILE_SIZE=$(stat -f%z "$RSYNC_LOG" 2>/dev/null || echo "0")
+  if [ "$FILE_SIZE" -gt "$BYTE_OFFSET" ]; then
+    NEW_MATCHES=$(tail -c +"$BYTE_OFFSET" "$RSYNC_LOG" 2>/dev/null | grep -c '^[>*<cd][a-zA-Z+.]' || true)
+    if [ "$NEW_MATCHES" -gt 0 ]; then
+      COUNT=$((COUNT + NEW_MATCHES))
+      BYTE_OFFSET=$((FILE_SIZE + 1))
 
-    if (( COUNT % LOG_INTERVAL == 0 )); then
-      log "PASO 3: Progreso ${PCT}% ($COUNT/$TOTAL_ITEMS) | $(elapsed)"
+      if [ "$TOTAL_ITEMS" -gt 0 ]; then
+        PCT=$((COUNT * 100 / TOTAL_ITEMS))
+        PCT=$(( PCT > 100 ? 100 : PCT ))
+      else
+        PCT=0
+      fi
+      write_progress "sync" "$PCT" "$COUNT" "$TOTAL_ITEMS"
+
+      if (( COUNT % LOG_INTERVAL == 0 )); then
+        log "PASO 3: Progreso ${PCT}% ($COUNT/$TOTAL_ITEMS) | $(elapsed)"
+      fi
     fi
   fi
   sleep 2
@@ -263,8 +315,9 @@ wait "$RSYNC_PID"
 RSYNC_EXIT=$?
 SYNC_ELAPSED=$(( $(date +%s) - SYNC_START ))
 
-# Final count
-COUNT=$(grep -c '^[>*<cd][a-zA-Z+.]' "$RSYNC_LOG" 2>/dev/null || true)
+# Conteo final (leer lo que quede sin procesar)
+REMAINING=$(tail -c +"$BYTE_OFFSET" "$RSYNC_LOG" 2>/dev/null | grep -c '^[>*<cd][a-zA-Z+.]' || true)
+COUNT=$((COUNT + REMAINING))
 write_progress "done" 100 "$COUNT" "$TOTAL_ITEMS"
 
 # ============================================================
@@ -272,17 +325,17 @@ write_progress "done" 100 "$COUNT" "$TOTAL_ITEMS"
 # ============================================================
 
 # Extraer resumen de stats de rsync
-FILES_TRANSFERRED=$(grep "Number of regular files transferred" "$RSYNC_LOG" | awk '{print $NF}')
-TOTAL_SIZE=$(grep "Total transferred file size" "$RSYNC_LOG" | awk -F: '{print $2}' | xargs)
-TOTAL_FILES=$(grep "Number of files:" "$RSYNC_LOG" | head -1 | awk -F: '{print $2}' | xargs)
-SPEEDUP=$(grep "speedup is" "$RSYNC_LOG" | awk '{print $NF}')
+FILES_TRANSFERRED=$(grep "Number of regular files transferred" "$RSYNC_LOG" | awk '{print $NF}') || true
+TOTAL_SIZE=$(grep "Total transferred file size" "$RSYNC_LOG" | awk -F: '{print $2}' | xargs) || true
+TOTAL_FILES=$(grep "Number of files:" "$RSYNC_LOG" | head -1 | awk -F: '{print $2}' | xargs) || true
+SPEEDUP=$(grep "speedup is" "$RSYNC_LOG" | awk '{print $NF}') || true
 
 if [ "$RSYNC_EXIT" -ne 0 ]; then
   log "PASO 4: rsync fallo con codigo $RSYNC_EXIT"
 
   # Intentar capturar lineas de error
-  ERRORS=$(grep -i "error\|failed\|denied\|permission" "$RSYNC_LOG" | head -5)
-  if [ -n "$ERRORS" ]; then
+  ERRORS=$(grep -i "error\|failed\|denied\|permission" "$RSYNC_LOG" | head -5) || true
+  if [ -n "${ERRORS:-}" ]; then
     log "  Errores detectados:"
     while IFS= read -r err; do
       log "    $err"
@@ -293,8 +346,8 @@ if [ "$RSYNC_EXIT" -ne 0 ]; then
   log "========================================"
   write_status "error" 0 "0 bytes" "true"
   notify "Error en backup. Revisa el log." "Basso"
-  rm -f "$RSYNC_LOG"
   cleanup_progress &
+  SCRIPT_FINISHED=true
   exit 1
 fi
 
@@ -310,5 +363,5 @@ log "========================================"
 write_status "ok" "${FILES_TRANSFERRED:-0}" "${TOTAL_SIZE:-0 bytes}" "true"
 notify "Backup completado. ${FILES_TRANSFERRED:-0} archivos en $(elapsed)." "Glass"
 
-rm -f "$RSYNC_LOG"
 cleanup_progress &
+SCRIPT_FINISHED=true
