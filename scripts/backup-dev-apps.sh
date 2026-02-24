@@ -15,7 +15,21 @@ CONFIG_FILE="$HOME/.local/share/backup-dev-apps/config.json"
 LOG="$HOME/.local/logs/backup-dev-apps.log"
 STATUS_FILE="$HOME/.local/share/backup-dev-apps/status.json"
 PROGRESS_FILE="$HOME/.local/share/backup-dev-apps/progress.json"
+LOCK_FILE="$HOME/.local/share/backup-dev-apps/backup.lock"
 START_TIME=$(date +%s)
+
+# Lock file: evitar ejecucion simultanea
+if [ -f "$LOCK_FILE" ]; then
+  LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+  if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    mkdir -p "$(dirname "$LOG")"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] BACKUP OMITIDO: ya hay una instancia en ejecucion (PID $LOCK_PID)" >> "$LOG"
+    exit 0
+  fi
+  # Lock file huerfano (proceso ya no existe), lo eliminamos
+  rm -f "$LOCK_FILE"
+fi
+echo $$ > "$LOCK_FILE"
 
 # Archivos temporales (se limpian en trap)
 RSYNC_LOG=""
@@ -101,8 +115,8 @@ cleanup_progress() {
 # TRAP EXIT: limpieza garantizada
 # ============================================================
 cleanup_on_exit() {
-  # Limpiar archivos temporales siempre
-  rm -f "$RSYNC_LOG" "$DRY_LOG" 2>/dev/null
+  # Limpiar lock file y archivos temporales siempre
+  rm -f "$LOCK_FILE" "$RSYNC_LOG" "$DRY_LOG" 2>/dev/null
 
   # Si el script no termino normalmente, registrar error
   if [ "$SCRIPT_FINISHED" != "true" ]; then
