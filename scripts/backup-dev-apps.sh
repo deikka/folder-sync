@@ -338,10 +338,10 @@ write_progress "done" 100 "$COUNT" "$TOTAL_ITEMS"
 # PASO 4: Resultado
 # ============================================================
 
-# Extraer resumen de stats de rsync
-FILES_TRANSFERRED=$(grep "Number of regular files transferred" "$RSYNC_LOG" | awk '{print $NF}') || true
+# Extraer resumen de stats de rsync (compatible con openrsync y GNU rsync)
+FILES_TRANSFERRED=$(grep "files transferred" "$RSYNC_LOG" | awk '{print $NF}' | tr -d ',') || true
 TOTAL_SIZE=$(grep "Total transferred file size" "$RSYNC_LOG" | awk -F: '{print $2}' | xargs) || true
-TOTAL_FILES=$(grep "Number of files:" "$RSYNC_LOG" | head -1 | awk -F: '{print $2}' | xargs) || true
+TOTAL_FILES=$(grep "Number of files:" "$RSYNC_LOG" | head -1 | awk -F: '{print $2}' | xargs | awk '{print $1}' | tr -d ',') || true
 SPEEDUP=$(grep "speedup is" "$RSYNC_LOG" | awk '{print $NF}') || true
 
 if [ "$RSYNC_EXIT" -ne 0 ]; then
