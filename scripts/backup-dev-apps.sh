@@ -174,7 +174,7 @@ log "  Origen:   $SOURCE"
 log "  Destino:  $DEST"
 log "  Volumen:  $VOLUME_NAME"
 log "  Modo:     $MODO_STR"
-EXCLUDE_LIST=$(printf '%s' "${EXCLUDE_ARGS[@]}" | sed "s/--exclude=//g; s/'//g" | tr ' ' ', ')
+EXCLUDE_LIST=$(printf '%s\n' "${EXCLUDE_ARGS[@]}" | sed "s/--exclude=//g; s/'//g" | paste -sd',' - | sed 's/,/, /g')
 log "  Excluye:  ${EXCLUDE_LIST:-ninguno}"
 log "----------------------------------------"
 

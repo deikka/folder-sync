@@ -381,7 +381,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         item.isEnabled = false
         item.attributedTitle = NSAttributedString(
             string: title,
-            attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)]
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular),
+                .foregroundColor: NSColor.labelColor
+            ]
         )
         menu.addItem(item)
     }
