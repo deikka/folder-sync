@@ -376,16 +376,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
+    @objc func noop() {}
+
     func addInfoItem(_ menu: NSMenu, _ title: String) {
-        let item = NSMenuItem()
-        let label = NSTextField(labelWithString: title)
-        label.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
-        label.textColor = .labelColor
-        label.sizeToFit()
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 28, height: 20))
-        label.frame.origin = NSPoint(x: 14, y: 1)
-        container.addSubview(label)
-        item.view = container
+        let item = NSMenuItem(title: title, action: #selector(noop), keyEquivalent: "")
+        item.target = self
+        item.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)]
+        )
         menu.addItem(item)
     }
 
