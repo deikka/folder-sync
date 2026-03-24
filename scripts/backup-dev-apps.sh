@@ -53,14 +53,32 @@ SOURCE_NAME=$(basename "${SOURCE%/}")
 VOLUME=$(echo "$DEST" | cut -d'/' -f1-3)
 VOLUME_NAME=$(basename "$VOLUME")
 
-EXCLUDE_ARGS=(
-  --exclude='node_modules'
-  --exclude='.git'
-  --exclude='tmp'
-  --exclude='.cache'
-  --exclude='cache'
-  --exclude='.DS_Store'
-)
+# Leer exclusiones de config.json, con fallback a valores por defecto
+EXCLUDE_ARGS=()
+if [ -f "$CONFIG_FILE" ]; then
+  EXCLUDES_JSON=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+for e in c.get('excludes', []):
+    print(e)
+" 2>/dev/null)
+fi
+
+if [ -n "${EXCLUDES_JSON:-}" ]; then
+  while IFS= read -r pattern; do
+    [ -n "$pattern" ] && EXCLUDE_ARGS+=(--exclude="$pattern")
+  done <<< "$EXCLUDES_JSON"
+else
+  # Fallback por defecto
+  EXCLUDE_ARGS=(
+    --exclude='node_modules'
+    --exclude='.git'
+    --exclude='tmp'
+    --exclude='.cache'
+    --exclude='cache'
+    --exclude='.DS_Store'
+  )
+fi
 
 # Timestamp dinámico (se actualiza en cada llamada a log)
 log() {
@@ -84,13 +102,15 @@ write_status() {
   local files="${2:-0}"
   local size="${3:-0 bytes}"
   local disk="${4:-false}"
+  local duration="${5:-0}"
   cat > "$STATUS_FILE" <<EOFSTATUS
 {
   "lastRun": "$(date '+%Y-%m-%d %H:%M:%S')",
   "status": "$status",
   "filesTransferred": $files,
   "totalSize": "$size",
-  "diskConnected": $disk
+  "diskConnected": $disk,
+  "durationSeconds": $duration
 }
 EOFSTATUS
 }
@@ -154,7 +174,8 @@ log "  Origen:   $SOURCE"
 log "  Destino:  $DEST"
 log "  Volumen:  $VOLUME_NAME"
 log "  Modo:     $MODO_STR"
-log "  Excluye:  node_modules, .git, tmp, .cache, cache, .DS_Store"
+EXCLUDE_LIST=$(printf '%s' "${EXCLUDE_ARGS[@]}" | sed "s/--exclude=//g; s/'//g" | tr ' ' ', ')
+log "  Excluye:  ${EXCLUDE_LIST:-ninguno}"
 log "----------------------------------------"
 
 # Verificar si el disco está montado
@@ -271,7 +292,8 @@ else
     log "PASO 2: Sin cambios detectados"
     log "RESULTADO: OK (sin cambios) | Tiempo total: $(elapsed)"
     log "========================================"
-    write_status "ok" "0" "0 bytes" "true"
+    TOTAL_ELAPSED=$(( $(date +%s) - START_TIME ))
+    write_status "ok" "0" "0 bytes" "true" "$TOTAL_ELAPSED"
     notify "Backup: sin cambios." "Glass"
     cleanup_progress &
     SCRIPT_FINISHED=true
@@ -296,6 +318,7 @@ LOG_INTERVAL=$(( TOTAL_ITEMS / 10 + 1 ))
 RSYNC_LOG=$(mktemp /tmp/backup-rsync.XXXXXX)
 
 rsync -ah --delete --itemize-changes --stats \
+  --partial --partial-dir=.rsync-tmp \
   "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$RSYNC_LOG" 2>&1 &
 RSYNC_PID=$!
 
@@ -347,8 +370,27 @@ SPEEDUP=$(grep "speedup is" "$RSYNC_LOG" | awk '{print $NF}') || true
 if [ "$RSYNC_EXIT" -ne 0 ]; then
   log "PASO 4: rsync fallo con codigo $RSYNC_EXIT"
 
-  # Intentar capturar lineas de error
-  ERRORS=$(grep -i "error\|failed\|denied\|permission" "$RSYNC_LOG" | head -5) || true
+  # Clasificar tipo de error para diagnostico preciso
+  if grep -qi "No space left on device\|disk full\|Result too large" "$RSYNC_LOG"; then
+    ERROR_TYPE="DISCO_LLENO"
+    ERROR_MSG="Disco de backup lleno. Libera espacio en el destino."
+    log "  Tipo: DISCO LLENO"
+  elif grep -qi "permission denied\|Operation not permitted" "$RSYNC_LOG"; then
+    ERROR_TYPE="PERMISOS"
+    ERROR_MSG="Permisos insuficientes. Revisa Acceso Total al Disco."
+    log "  Tipo: PERMISOS"
+  elif grep -qi "connection reset\|broken pipe\|Input/output error\|Read-only file system" "$RSYNC_LOG"; then
+    ERROR_TYPE="DESCONEXION"
+    ERROR_MSG="Disco desconectado durante el backup."
+    log "  Tipo: DESCONEXION / IO ERROR"
+  else
+    ERROR_TYPE="DESCONOCIDO"
+    ERROR_MSG="Error en backup (codigo $RSYNC_EXIT). Revisa el log."
+    log "  Tipo: DESCONOCIDO (exit code $RSYNC_EXIT)"
+  fi
+
+  # Capturar lineas de error especificas
+  ERRORS=$(grep -i "error\|failed\|denied\|permission\|no space\|read-only" "$RSYNC_LOG" | head -5) || true
   if [ -n "${ERRORS:-}" ]; then
     log "  Errores detectados:"
     while IFS= read -r err; do
@@ -356,10 +398,10 @@ if [ "$RSYNC_EXIT" -ne 0 ]; then
     done <<< "$ERRORS"
   fi
 
-  log "RESULTADO: ERROR | Tiempo total: $(elapsed)"
+  log "RESULTADO: ERROR ($ERROR_TYPE) | Tiempo total: $(elapsed)"
   log "========================================"
   write_status "error" 0 "0 bytes" "true"
-  notify "Error en backup. Revisa el log." "Basso"
+  notify "$ERROR_MSG" "Basso"
   cleanup_progress &
   SCRIPT_FINISHED=true
   exit 1
@@ -374,7 +416,8 @@ log "  Tiempo sync:           ${SYNC_ELAPSED}s"
 log "RESULTADO: OK | Tiempo total: $(elapsed)"
 log "========================================"
 
-write_status "ok" "${FILES_TRANSFERRED:-0}" "${TOTAL_SIZE:-0 bytes}" "true"
+TOTAL_ELAPSED=$(( $(date +%s) - START_TIME ))
+write_status "ok" "${FILES_TRANSFERRED:-0}" "${TOTAL_SIZE:-0 bytes}" "true" "$TOTAL_ELAPSED"
 notify "Backup completado. ${FILES_TRANSFERRED:-0} archivos en $(elapsed)." "Glass"
 
 cleanup_progress &

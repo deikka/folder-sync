@@ -20,6 +20,7 @@ struct BackupConfig: Codable {
     var days: [Int]
     var source: String
     var destination: String
+    var excludes: [String]?
 }
 
 struct BackupStatus: Codable {
@@ -28,6 +29,7 @@ struct BackupStatus: Codable {
     var filesTransferred: Int
     var totalSize: String
     var diskConnected: Bool
+    var durationSeconds: Int?
 }
 
 struct BackupProgress: Codable {
@@ -131,8 +133,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var sourceField: NSTextField!
     var destField: NSTextField!
     var dayCheckboxes: [NSButton] = []
+    var excludesField: NSTextView!
 
     let dayNames = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"]
+
+    func formatDuration(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        let min = seconds / 60
+        let sec = seconds % 60
+        return sec > 0 ? "\(min)m \(sec)s" : "\(min)m"
+    }
+
+    func freeSpace(at path: String) -> String? {
+        let volumePath = "/" + path.split(separator: "/").prefix(2).map { String($0) }.joined(separator: "/")
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: volumePath),
+              let freeBytes = attrs[.systemFreeSize] as? Int64 else { return nil }
+        let gb = Double(freeBytes) / 1_073_741_824.0
+        if gb >= 1.0 {
+            return String(format: "%.1f GB libres", gb)
+        } else {
+            let mb = Double(freeBytes) / 1_048_576.0
+            return String(format: "%.0f MB libres", mb)
+        }
+    }
+
+    func nextScheduledBackup(config: BackupConfig) -> String? {
+        let cal = Calendar.current
+        let now = Date()
+        var candidates: [Date] = []
+
+        // Buscar proxima ejecucion en los proximos 8 dias
+        for dayOffset in 0..<8 {
+            guard let candidateDay = cal.date(byAdding: .day, value: dayOffset, to: now) else { continue }
+            let weekday = cal.component(.weekday, from: candidateDay) - 1 // 0=Dom ... 6=Sab
+            if !config.days.isEmpty && !config.days.contains(weekday) { continue }
+            var comps = cal.dateComponents([.year, .month, .day], from: candidateDay)
+            comps.hour = config.hour
+            comps.minute = config.minute
+            guard let candidate = cal.date(from: comps) else { continue }
+            if candidate > now {
+                candidates.append(candidate)
+                break
+            }
+        }
+
+        guard let next = candidates.first else { return nil }
+        let diff = cal.dateComponents([.day, .hour, .minute], from: now, to: next)
+        if let d = diff.day, d > 0 {
+            let dayName = dayNames[cal.component(.weekday, from: next) - 1]
+            return "\(dayName) \(String(format: "%02d:%02d", config.hour, config.minute))"
+        } else if let h = diff.hour, h > 0 {
+            return "en \(h)h \(diff.minute ?? 0)m"
+        } else if let m = diff.minute, m > 0 {
+            return "en \(m)m"
+        }
+        return nil
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -257,19 +313,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case "error": indicator = "[ERR]"
             default:      indicator = "[?]"
             }
-            addInfoItem(menu, "Ultima copia:  \(s.lastRun)")
+            let durationStr = s.durationSeconds.map { " (\(formatDuration($0)))" } ?? ""
+            addInfoItem(menu, "Ultima copia:  \(s.lastRun)\(durationStr)")
             addInfoItem(menu, "Estado:  \(indicator)  |  Archivos: \(s.filesTransferred)")
             addInfoItem(menu, "Tamano:  \(s.totalSize)")
 
-            let diskStr = s.diskConnected ? "Conectado" : "No conectado"
             let destPath = loadJSON(configPath, as: BackupConfig.self)?.destination ?? "/Volumes/Toshiba/dev_apps/"
             let volumePath = destPath.split(separator: "/").prefix(2).map { String($0) }.joined(separator: "/")
             let diskLive = FileManager.default.fileExists(atPath: "/\(volumePath)")
+
+            let diskStr = s.diskConnected ? "Conectado" : "No conectado"
             let nowStr = diskLive ? "Conectado" : "No conectado"
             if diskStr != nowStr {
                 addInfoItem(menu, "Disco (ultimo):  \(diskStr)  |  Ahora:  \(nowStr)")
             } else {
                 addInfoItem(menu, "Disco:  \(nowStr)")
+            }
+
+            // Espacio libre en disco de destino
+            if diskLive, let space = freeSpace(at: destPath) {
+                addInfoItem(menu, "Espacio:  \(space)")
             }
         } else {
             addInfoItem(menu, "Sin datos de backup aun")
@@ -286,6 +349,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             menu.addItem(.separator())
             addInfoItem(menu, "Horario:  \(timeStr)  |  \(daysStr)")
+            if let next = nextScheduledBackup(config: config) {
+                addInfoItem(menu, "Proximo:  \(next)")
+            }
         }
 
         menu.addItem(.separator())
@@ -503,7 +569,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 400
+        let windowHeight: CGFloat = 540
         let padding: CGFloat = 20
         let rowHeight: CGFloat = 28
         let labelWidth: CGFloat = 80
@@ -624,6 +690,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             dayCheckboxes.append(cb)
         }
 
+        // Excludes section
+        y -= rowHeight + 12
+        let exLabel = NSTextField(labelWithString: "Excluir:")
+        exLabel.frame = NSRect(x: padding, y: y, width: labelWidth, height: rowHeight)
+        exLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        contentView.addSubview(exLabel)
+
+        let exHint = NSTextField(labelWithString: "(uno por linea)")
+        exHint.frame = NSRect(x: padding + labelWidth, y: y, width: 200, height: rowHeight)
+        exHint.font = .systemFont(ofSize: 11)
+        exHint.textColor = .secondaryLabelColor
+        contentView.addSubview(exHint)
+
+        let defaultExcludes = ["node_modules", ".git", "tmp", ".cache", "cache", ".DS_Store"]
+        let currentExcludes = config.excludes ?? defaultExcludes
+
+        y -= 80
+        let scrollView = NSScrollView(frame: NSRect(x: padding + labelWidth, y: y, width: windowWidth - padding - labelWidth - padding, height: 80))
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        let textView = NSTextView(frame: scrollView.contentView.bounds)
+        textView.isEditable = true
+        textView.isRichText = false
+        textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.string = currentExcludes.joined(separator: "\n")
+        textView.autoresizingMask = [.width, .height]
+        scrollView.documentView = textView
+        contentView.addSubview(scrollView)
+        excludesField = textView
+
         // Buttons
         y -= rowHeight + 16
 
@@ -695,6 +791,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         config.days = dayCheckboxes.filter { $0.state == .on }.map { $0.tag }
         config.source = sourceField.stringValue
         config.destination = destField.stringValue
+        config.excludes = excludesField.string
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
 
         saveJSON(config, to: configPath)
         regeneratePlist(config: config)
