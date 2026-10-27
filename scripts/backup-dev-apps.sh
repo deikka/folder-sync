@@ -1,6 +1,6 @@
 #!/bin/bash
 # Backup incremental de dev_apps a disco externo
-# Ejecutado diariamente via launchd
+# Ejecutado por FolderSync.app segun el horario de config.json
 
 set -u
 
@@ -265,7 +265,7 @@ else
   DRY_START=$(date +%s)
   DRY_LOG=$(mktemp /tmp/backup-dry.XXXXXX)
 
-  rsync -ah --delete --dry-run --itemize-changes \
+  rsync -ah --no-specials --no-devices --delete --dry-run --itemize-changes \
     "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$DRY_LOG" 2>&1 || true
 
   DRY_ELAPSED=$(( $(date +%s) - DRY_START ))
@@ -317,7 +317,8 @@ COUNT=0
 LOG_INTERVAL=$(( TOTAL_ITEMS / 10 + 1 ))
 RSYNC_LOG=$(mktemp /tmp/backup-rsync.XXXXXX)
 
-rsync -ah --delete --itemize-changes --stats \
+# --no-specials/--no-devices: sockets y FIFOs no se pueden crear en iCloud Drive (rc=23)
+rsync -ah --no-specials --no-devices --delete --itemize-changes --stats \
   --partial --partial-dir=.rsync-tmp \
   "${EXCLUDE_ARGS[@]}" "$SOURCE" "$DEST" > "$RSYNC_LOG" 2>&1 &
 RSYNC_PID=$!
@@ -390,7 +391,8 @@ if [ "$RSYNC_EXIT" -ne 0 ]; then
   fi
 
   # Capturar lineas de error especificas
-  ERRORS=$(grep -i "error\|failed\|denied\|permission\|no space\|read-only" "$RSYNC_LOG" | head -5) || true
+  # Ignorar lineas de itemize (nombres de fichero como _error_messages.html.erb)
+  ERRORS=$(grep -v -E '^([<>ch.][a-zA-Z+.]|\*deleting)' "$RSYNC_LOG" | grep -i "error\|failed\|denied\|permission\|no space\|read-only" | head -5) || true
   if [ -n "${ERRORS:-}" ]; then
     log "  Errores detectados:"
     while IFS= read -r err; do
