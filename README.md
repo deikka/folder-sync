@@ -2,7 +2,7 @@
 
 Backup incremental de carpetas a disco externo en macOS con app nativa de menu de barra.
 
-Usa `rsync` con `--delete` para mantener un espejo exacto del origen, `launchd` para programar la ejecucion automatica, y una app Swift/AppKit ligera para monitorizar y configurar desde la barra de menu.
+Usa `rsync` con `--delete` para mantener un espejo exacto del origen, y una app Swift/AppKit ligera en la barra de menu que programa la ejecucion automatica, monitoriza y configura. La app debe estar abierta (activa "Iniciar con el sistema").
 
 ## Funcionalidades
 
@@ -96,12 +96,6 @@ folder-sync-backup --full
 
 # Ver log
 cat ~/.local/logs/backup-dev-apps.log
-
-# Desactivar programacion
-launchctl unload ~/Library/LaunchAgents/com.klab.folder-sync.plist
-
-# Reactivar programacion
-launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist
 ```
 
 ## Configuracion
@@ -122,7 +116,7 @@ La app guarda la configuracion en `~/.local/share/backup-dev-apps/config.json`:
 - `days` con valores = dias especificos (0=Dom, 1=Lun ... 6=Sab)
 - `source` y `destination` configurables desde Ajustes con selector de carpeta
 
-Al guardar desde la app, se regenera automaticamente el `LaunchAgent` y se recarga `launchd`.
+La programacion la ejecuta la propia app (no `launchd`): un script lanzado por `launchd` no hereda los permisos de la app y falla con destinos protegidos como iCloud Drive. Si el Mac estaba dormido a la hora programada, el backup se lanza al despertar.
 
 ## Log
 
@@ -170,8 +164,7 @@ Modificar la variable `EXCLUDE_ARGS` en `scripts/backup-dev-apps.sh` para ajusta
 ├── app/
 │   └── main.swift              # App de menu (Swift/AppKit)
 ├── scripts/
-│   ├── backup-dev-apps.sh      # Script rsync con progreso
-│   └── com.klab.folder-sync.plist      # LaunchAgent template
+│   └── backup-dev-apps.sh      # Script rsync con progreso
 ├── build.sh                    # Compila el bundle .app
 └── install.sh                  # Instalacion completa
 ```
