@@ -38,10 +38,6 @@ if [ -f "$OLD_PLIST" ]; then
   rm -f "$OLD_PLIST"
 fi
 
-# Instalar LaunchAgent
-cp scripts/com.klab.folder-sync.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.klab.folder-sync.plist 2>/dev/null || true
-
 # Copiar a ~/Applications (Spotlight/Raycast/Launchpad no indexan symlinks)
 mkdir -p ~/Applications
 rm -rf ~/Applications/FolderSync.app

@@ -51,70 +51,19 @@ func saveJSON<T: Encodable>(_ value: T, to path: String) {
     FileManager.default.createFile(atPath: path, contents: data)
 }
 
-// MARK: - Plist Generator
+// MARK: - LaunchAgent (legacy)
 
-func regeneratePlist(config: BackupConfig) {
+/// Retira el LaunchAgent de versiones anteriores.
+/// Bajo launchd el script corre sin los permisos TCC de la app (p. ej. iCloud Drive
+/// da "Operation not permitted"), asi que ahora la programacion la hace la propia app.
+func removeLaunchAgent() {
+    guard FileManager.default.fileExists(atPath: plistPath) else { return }
     let unload = Process()
     unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     unload.arguments = ["unload", plistPath]
     try? unload.run()
     unload.waitUntilExit()
-
-    var calendarEntries = ""
-
-    if config.days.isEmpty {
-        calendarEntries = """
-                <dict>
-                    <key>Hour</key>
-                    <integer>\(config.hour)</integer>
-                    <key>Minute</key>
-                    <integer>\(config.minute)</integer>
-                </dict>
-        """
-    } else {
-        calendarEntries = "        <array>\n"
-        for day in config.days.sorted() {
-            calendarEntries += """
-                    <dict>
-                        <key>Weekday</key>
-                        <integer>\(day)</integer>
-                        <key>Hour</key>
-                        <integer>\(config.hour)</integer>
-                        <key>Minute</key>
-                        <integer>\(config.minute)</integer>
-                    </dict>\n
-            """
-        }
-        calendarEntries += "        </array>"
-    }
-
-    let plist = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-        <key>Label</key>
-        <string>com.klab.folder-sync</string>
-        <key>ProgramArguments</key>
-        <array>
-            <string>\(scriptPath)</string>
-        </array>
-        <key>StartCalendarInterval</key>
-    \(calendarEntries)
-        <key>StandardErrorPath</key>
-        <string>\(home)/.local/logs/backup-dev-apps-stderr.log</string>
-    </dict>
-    </plist>
-    """
-
-    try? plist.write(toFile: plistPath, atomically: true, encoding: .utf8)
-
-    let load = Process()
-    load.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    load.arguments = ["load", plistPath]
-    try? load.run()
-    load.waitUntilExit()
+    try? FileManager.default.removeItem(atPath: plistPath)
 }
 
 // MARK: - App Delegate
@@ -202,10 +151,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 button.title = "BK"
             }
         }
+        removeLaunchAgent()
         refreshMenu()
+        checkSchedule()
+        // El timer no corre con el Mac dormido: al despertar, el siguiente tick recupera la franja perdida
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refreshMenu()
+            self?.checkSchedule()
         }
+    }
+
+    // MARK: - Scheduler
+
+    /// Ultima franja programada (<= ahora) segun la config, buscando hasta 7 dias atras.
+    func lastScheduledSlot(config: BackupConfig, now: Date = Date()) -> Date? {
+        let cal = Calendar.current
+        for dayOffset in 0..<8 {
+            guard let day = cal.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
+            let weekday = cal.component(.weekday, from: day) - 1 // 0=Dom ... 6=Sab
+            if !config.days.isEmpty && !config.days.contains(weekday) { continue }
+            var comps = cal.dateComponents([.year, .month, .day], from: day)
+            comps.hour = config.hour
+            comps.minute = config.minute
+            guard let slot = cal.date(from: comps) else { continue }
+            if slot <= now { return slot }
+        }
+        return nil
+    }
+
+    /// Lanza el backup si hay una franja programada que aun no se ha atendido.
+    /// Solo se recupera la ultima franja perdida, como hacia launchd.
+    func checkSchedule() {
+        guard let config = loadJSON(configPath, as: BackupConfig.self),
+              let slot = lastScheduledSlot(config: config) else { return }
+        let key = "lastScheduledSlot"
+        guard let handled = UserDefaults.standard.object(forKey: key) as? Date else {
+            // Primera ejecucion: no recuperar franjas anteriores a la instalacion
+            UserDefaults.standard.set(slot, forKey: key)
+            return
+        }
+        guard slot > handled else { return }
+        UserDefaults.standard.set(slot, forKey: key)
+        runBackup() // si ya hay uno en curso, esa ejecucion cubre la franja
     }
 
     // MARK: - Progress Tracking
@@ -799,7 +786,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .filter { !$0.isEmpty }
 
         saveJSON(config, to: configPath)
-        regeneratePlist(config: config)
         refreshMenu()
         closeConfig()
     }
